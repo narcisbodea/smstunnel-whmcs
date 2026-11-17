@@ -1,0 +1,13 @@
+/build/
+/tests/.cache/
+/tests/e2e/.state/
+/tests/e2e/results/
+/tests/fake-api/*.log
+/tests/fake-api/*.txt
+node_modules/
+vendor/
+.env
+*.log
+*.sqlite
+.DS_Store
+Thumbs.db

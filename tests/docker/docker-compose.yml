@@ -1,0 +1,44 @@
+# The PHP versions WHMCS 8.10 to 9.1 run on (8.10: 7.2-8.1, 8.11/8.12: +8.2, 8.13: +8.3, 9.0: 8.2-8.3,
+# 9.1: 8.2-8.4), plus PHP 8.5 as a look ahead. Used by tools/check.sh and tools/e2e.sh with the
+# project name smst-int-whmcs; the containers only run one command each (docker compose run --rm).
+name: smst-int-whmcs
+
+x-php: &php
+  volumes:
+    - ../..:/repo
+  working_dir: /repo
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  entrypoint: ["sh", "-c"]
+
+services:
+  composer:
+    image: composer:2
+    volumes:
+      - ../..:/repo
+    working_dir: /repo
+    entrypoint: ["sh", "-c"]
+  php72:
+    <<: *php
+    image: php:7.2-cli-alpine
+  php73:
+    <<: *php
+    image: php:7.3-cli-alpine
+  php74:
+    <<: *php
+    image: php:7.4-cli-alpine
+  php81:
+    <<: *php
+    image: php:8.1-cli-alpine
+  php82:
+    <<: *php
+    image: php:8.2-cli
+  php83:
+    <<: *php
+    image: php:8.3-cli
+  php84:
+    <<: *php
+    image: php:8.4-cli-alpine
+  php85:
+    <<: *php
+    image: php:8.5-cli-alpine
