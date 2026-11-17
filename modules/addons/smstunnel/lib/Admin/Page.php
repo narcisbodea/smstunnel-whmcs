@@ -63,9 +63,6 @@ final class Page
     /** @var array<int, array{0: string, 1: string}> notices to show at the top */
     private $notices = array();
 
-    /** @var array<string, mixed>|null the last test text's result */
-    private $testResult;
-
     /** @var array<string, string> what was typed into the test form */
     private $testForm = array();
 
@@ -254,7 +251,6 @@ final class Page
         $text->message = Template::cut($message, Template::MAX_LENGTH);
         $text->countryCode = $callingCode;
         $result = $this->outbox->sendOnce($text);
-        $this->testResult = $result + array('number' => $number);
         if ($result['status'] === TextLog::SENT) {
             $this->notice('success', 'The test text went to your phone for ' . $number . ' (message ID ' . $result['messageId'] . '). It should arrive in a few seconds.');
         } elseif ($result['status'] === TextLog::QUEUED) {
@@ -273,7 +269,7 @@ final class Page
         $on = isset($post['on']) && is_array($post['on']) ? $post['on'] : array();
         $problems = array();
         foreach (Events::forAudience($audience) as $event => $definition) {
-            $text = isset($texts[$event]) && is_string($texts[$event]) ? $texts[$event] : '';
+            $text = isset($texts[$event]) && is_string($texts[$event]) ? self::decoded($texts[$event]) : '';
             if (Template::length($text) > Template::MAX_LENGTH) {
                 $problems[] = $definition['label'] . ': the text is longer than ' . Template::MAX_LENGTH . ' characters.';
                 continue;
@@ -544,7 +540,7 @@ final class Page
                 . '<td>' . $client . '</td>'
                 . '<td style="white-space:nowrap">' . Html::e((string) $row['recipient']) . '</td>'
                 . '<td>' . $this->statusBadge($row) . '</td>'
-                . '<td><code>' . Html::e((string) $row['message_id']) . '</code></td>'
+                . '<td>' . ((string) $row['message_id'] !== '' ? '<code>' . Html::e((string) $row['message_id']) . '</code>' : '') . '</td>'
                 . '<td>' . Html::e((string) $row['error']) . '</td>'
                 . '</tr>';
         }
@@ -727,11 +723,27 @@ final class Page
     }
 
     /**
+     * A form value as typed. WHMCS HTML-encodes request values before modules see them ("Tom & Co"
+     * arrives as "Tom &amp; Co"); WHMCS's own Sanitize::decode() undoes that.
+     *
      * @param array<string, mixed> $post
      */
     private static function field(array $post, string $name): string
     {
-        return isset($post[$name]) && is_string($post[$name]) ? $post[$name] : '';
+        return isset($post[$name]) && is_string($post[$name]) ? self::decoded($post[$name]) : '';
+    }
+
+    public static function decoded(string $value): string
+    {
+        if (class_exists('WHMCS\\Input\\Sanitize') && method_exists('WHMCS\\Input\\Sanitize', 'decode')) {
+            try {
+                return (string) \WHMCS\Input\Sanitize::decode($value);
+            } catch (\Throwable $e) {
+                // The plain decoding below.
+            }
+        }
+
+        return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     private function style(): string

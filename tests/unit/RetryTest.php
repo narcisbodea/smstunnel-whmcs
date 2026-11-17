@@ -305,6 +305,58 @@ test('two cron runs at once cannot both take the same text', function () {
     ok(!Module::log()->claim($id), 'the second cannot');
 });
 
+test('a new API key: a text that may have reached SMSTunnel under the old key is not retried under the new one', function () {
+    $invoice = invoiceMaker();
+    Harness::respond(new TransportException('No answer from SMSTunnel', 28, true));
+    $invoice();
+    Harness::respond(new TransportException('Could not reach SMSTunnel: Connection refused', 7, false));
+    Harness::nextRequest();
+    $invoice();
+    eq(array_map('intval', array_column(Harness::logRows(), 'reached')), array(1, 0), 'the timeout may have arrived, the refused connection did not');
+    Module::settings()->setApiKey('sk_' . 'live_' . 'another0123456789abcdef0123456');
+    Harness::nextRequest();
+    Harness::$now += 301;
+    Harness::fire('AfterCronJob');
+    $rows = Harness::logRows();
+    eq($rows[0]['status'], TextLog::FAILED, 'a key change after a lost answer: not retried (SMSTunnel keeps keys per API key)');
+    has((string) $rows[0]['error'], 'the API key or the SMSTunnel server changed');
+    eq($rows[1]['status'], TextLog::SENT, 'never reached SMSTunnel: safe to send under the new key');
+    eq(Harness::sends()[2]['headers']['x-api-key'], 'sk_' . 'live_' . 'another0123456789abcdef0123456');
+});
+
+test('a name stored in Latin-1 (an old database) becomes UTF-8, and the retry sends the same request', function () {
+    $invoice = invoiceMaker();
+    Harness::usClient(1, '4155550101', array('firstname' => "Andr\xE9"));
+    Module::settings()->setEvent('invoice_created', true, "Hi {client_first_name}, invoice #{invoice_num}. Caf\xE9");
+    Harness::respond(new TransportException('down'));
+    $invoice();
+    $row = lastRow();
+    ok(is_array(json_decode((string) $row['request'], true)), 'the stored request decodes');
+    eq(Harness::sends()[0]['body']['message'], 'Hi André, invoice #2001. Caf?', 'the name read as Latin-1; a stray byte in the text replaced');
+    Harness::nextRequest();
+    Harness::$now += 301;
+    Harness::fire('AfterCronJob');
+    $sends = Harness::sends();
+    eq($sends[1]['raw'], $sends[0]['raw'], 'the retry sends the same request');
+    eq(lastRow()['status'], TextLog::SENT);
+});
+
+test('without an API key, texts past the window are still ended and lose their words; the purge takes all states', function () {
+    $invoice = invoiceMaker();
+    Harness::respond(new TransportException('down'));
+    $invoice();
+    Module::settings()->setApiKey('');
+    Harness::nextRequest();
+    Harness::$now += 82800 + 601;
+    Harness::fire('AfterCronJob');
+    $row = lastRow();
+    eq(array($row['status'], $row['request']), array(TextLog::FAILED, null));
+    has((string) $row['error'], 'not sent within 23 hours');
+    \WHMCS\Database\Capsule::table('mod_smstunnel_log')->insert(array('created_at' => date('Y-m-d H:i:s', Harness::$now - 100 * 86400), 'updated_at' => date('Y-m-d H:i:s', Harness::$now), 'event' => 'x', 'audience' => 'client', 'status' => TextLog::RETRY, 'request' => '{}'));
+    Harness::fire('DailyCronJob');
+    eq(count(Harness::logRows()), 1, 'an old row in any state goes with the purge');
+});
+
 test('texts older than the 23-hour window are given up without a call', function () {
     $invoice = invoiceMaker();
     Harness::respond(new TransportException('down'));

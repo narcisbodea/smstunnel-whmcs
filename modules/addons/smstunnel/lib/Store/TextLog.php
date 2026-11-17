@@ -75,6 +75,7 @@ class TextLog
             'next_attempt_at' => null,
             'endpoint' => isset($row['endpoint']) ? (string) $row['endpoint'] : 'send',
             'idempotency_key' => isset($row['idempotency_key']) ? (string) $row['idempotency_key'] : null,
+            'scope' => isset($row['scope']) ? substr((string) $row['scope'], 0, 16) : '',
             'request' => isset($row['request']) ? (string) $row['request'] : null,
             'dedupe_key' => isset($row['dedupe_key']) && $row['dedupe_key'] !== '' ? substr((string) $row['dedupe_key'], 0, 120) : null,
         );
@@ -224,7 +225,8 @@ class TextLog
     }
 
     /**
-     * Removes rows older than $days days (texts still waiting for a retry stay).
+     * Removes rows older than $days days, whatever their state: a day or more after it was written, a
+     * text is past its 23-hour retry window.
      *
      * @return int how many rows went
      */
@@ -232,10 +234,52 @@ class TextLog
     {
         $cutoff = $this->platform->nowSql(-max(1, $days) * 86400);
 
+        return (int) Capsule::table(Schema::LOG)->where('created_at', '<', $cutoff)->delete();
+    }
+
+    /**
+     * Ends texts still waiting (or left "sending") that were written before $cutoff: failed, words
+     * dropped. Runs on every cron, also without an API key, so no number and words linger.
+     *
+     * @return int how many
+     */
+    public function giveUpOlderThan(string $cutoff, string $error): int
+    {
         return (int) Capsule::table(Schema::LOG)
+            ->whereIn('status', array(self::RETRY, self::SENDING))
             ->where('created_at', '<', $cutoff)
-            ->whereNotIn('status', array(self::RETRY, self::SENDING))
-            ->delete();
+            ->update(array(
+                'status' => self::FAILED,
+                'error' => Schema::safeText($error, 255),
+                'next_attempt_at' => null,
+                'request' => null,
+                'updated_at' => $this->platform->nowSql(),
+            ));
+    }
+
+    /** Records which API key and server a text's Idempotency-Key now belongs to. */
+    public function setScope(int $id, string $scope)
+    {
+        Capsule::table(Schema::LOG)->where('id', $id)->update(array('scope' => substr($scope, 0, 16)));
+    }
+
+    /** Records that an attempt of this text may have reached SMSTunnel. */
+    public function markReached(int $id)
+    {
+        Capsule::table(Schema::LOG)->where('id', $id)->update(array('reached' => 1));
+    }
+
+    /**
+     * How many texts of one event went (or were tried) to one number since $since.
+     */
+    public function countSince(string $event, string $recipient, string $since): int
+    {
+        return (int) Capsule::table(Schema::LOG)
+            ->where('event', $event)
+            ->where('recipient', $recipient)
+            ->where('created_at', '>=', $since)
+            ->where('status', '<>', self::SKIPPED)
+            ->count();
     }
 
     /**

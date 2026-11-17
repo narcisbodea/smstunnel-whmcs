@@ -81,11 +81,23 @@ class Outbox
         return 'whmcs-' . bin2hex(random_bytes(16));
     }
 
+    /** The API key and server the next attempts go to, as a short hash (never the key itself). */
+    public function scope(): string
+    {
+        return substr(hash('sha256', $this->settings->apiKey() . '|' . $this->settings->apiUrl()), 0, 16);
+    }
+
     public function client(): Client
     {
         return new Client($this->settings->apiKey(), $this->settings->apiUrl(), $this->clientOptions + array(
             'userAgent' => Version::userAgent($this->platform->whmcsVersion()),
         ));
+    }
+
+    /** How many texts of an event went (or were tried) to a number in the last $seconds. */
+    public function sentRecently(string $event, string $recipient, int $seconds): int
+    {
+        return $this->log->countSince($event, $recipient, $this->platform->nowSql(-$seconds));
     }
 
     /**
@@ -127,8 +139,9 @@ class Outbox
             'status' => TextLog::SENDING,
             'endpoint' => $text->endpoint,
             'idempotency_key' => $key,
-            // Default flags: escaped non-ASCII characters fit any MySQL character set.
-            'request' => json_encode($body),
+            // Non-ASCII characters escaped (they fit any MySQL character set), never false.
+            'request' => (string) json_encode($body, defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0),
+            'scope' => $this->scope(),
             'dedupe_key' => $text->dedupeKey,
         ));
         if ($id === 0) {
@@ -159,6 +172,7 @@ class Outbox
             'status' => TextLog::SENDING,
             'endpoint' => $text->endpoint,
             'idempotency_key' => $key,
+            'scope' => $this->scope(),
             'request' => null,
         ));
         if ($id > 0) {
@@ -190,10 +204,13 @@ class Outbox
     public function retryDue(int $limit = self::RUN_LIMIT): array
     {
         $stats = array('tried' => 0, 'sent' => 0, 'retry' => 0, 'failed' => 0);
+        $now = $this->platform->now();
+        // Past the retry window, nothing more can be done (also without a key): no words linger.
+        $stats['failed'] += $this->log->giveUpOlderThan(date('Y-m-d H:i:s', $now - RetryPolicy::WINDOW - TextLog::STALE_SECONDS), 'Gave up: not sent within 23 hours.');
         if (!$this->settings->hasApiKey()) {
             return $stats;
         }
-        $now = $this->platform->now();
+        $scope = $this->scope();
         foreach ($this->log->due($limit) as $row) {
             if (isset(self::$circuits[$this->settings->apiUrl()])) {
                 // SMSTunnel cannot be reached, is failing or limits the rate: the rest waits for the next run.
@@ -212,6 +229,17 @@ class Outbox
                 $this->log->finish($id, TextLog::FAILED, '', sprintf('Gave up after %d tries: %s', (int) $row['attempts'], (string) $row['error']));
                 ++$stats['failed'];
                 continue;
+            }
+            if ((string) $row['scope'] !== $scope) {
+                // A text left "sending" by a request that died may have arrived too.
+                if ((int) $row['reached'] === 1 || $row['status'] === TextLog::SENDING) {
+                    // SMSTunnel keeps Idempotency-Keys per API key: under another key (or server), an
+                    // attempt that did arrive would not be recognised and the text would go out twice.
+                    $this->log->finish($id, TextLog::FAILED, '', 'Not retried: the API key or the SMSTunnel server changed since the first try. Check Messages in your SMSTunnel dashboard before sending it again.');
+                    ++$stats['failed'];
+                    continue;
+                }
+                $this->log->setScope($id, $scope);
             }
             $status = $this->attempt($id, $body, $key, (string) $row['endpoint'], false);
             if ($status === '') {
@@ -271,6 +299,9 @@ class Outbox
     {
         list($kind, $retryAfter, $stopsOthers) = RetryPolicy::classify($e);
         $error = self::describe($e);
+        if (RetryPolicy::mayHaveArrived($e)) {
+            $this->log->markReached($id);
+        }
         if ($stopsOthers) {
             self::$circuits[$url] = array('retry' => $kind === RetryPolicy::RETRY, 'error' => $error, 'retryAfter' => $retryAfter);
             if ($kind === RetryPolicy::FINAL) {

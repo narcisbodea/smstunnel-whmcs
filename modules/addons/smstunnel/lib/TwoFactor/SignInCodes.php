@@ -32,7 +32,8 @@ if (!defined('WHMCS')) {
  * - Only a keyed hash of the code is stored (HMAC-SHA256 with a secret kept encrypted by WHMCS), and
  *   typed codes are compared with hash_equals(). No code is ever written to a log, and the text of a
  *   sign-in code is never stored.
- * - 5 wrong tries end a code. A user gets at most 5 codes in 30 minutes, at least 60 seconds apart.
+ * - 5 wrong tries end a code. A user gets at most 5 codes in 30 minutes, at least 60 seconds apart;
+ *   a number gets at most 5 codes an hour, and the whole WHMCS at most 20 setup codes an hour.
  */
 class SignInCodes
 {
@@ -42,6 +43,12 @@ class SignInCodes
     const COOLDOWN = 60;
     const MAX_PER_WINDOW = 5;
     const WINDOW = 1800;
+
+    /** Codes to one number in an hour, whoever asks for them. */
+    const MAX_PER_NUMBER = 5;
+
+    /** Setup codes in an hour, for the whole WHMCS. */
+    const MAX_SETUPS_PER_HOUR = 20;
 
     const LOGIN = 'login';
     const SETUP = 'setup';
@@ -117,6 +124,15 @@ class SignInCodes
         $last = Capsule::table(Schema::CODES)->where('user_key', $userKey)->orderBy('id', 'desc')->first();
         if ($last !== null && $now - (int) strtotime((string) $last->created_at) < self::COOLDOWN) {
             return self::result(false, false, 'A code was sent less than a minute ago. Wait a moment and try again.', 0);
+        }
+        // Anyone who can sign up can type any number into the setup form: limits per number, whoever asks,
+        // and for all setups together, keep the form from texting strangers or using up the plan.
+        $hourAgo = date('Y-m-d H:i:s', $now - 3600);
+        if (Capsule::table(Schema::CODES)->where('phone_hash', $phoneHash)->where('created_at', '>', $hourAgo)->count() >= self::MAX_PER_NUMBER) {
+            return self::result(false, false, 'Too many codes were sent to this number in the last hour. Wait, or use your backup code.', 0);
+        }
+        if ($purpose === self::SETUP && Capsule::table(Schema::CODES)->where('purpose', self::SETUP)->where('created_at', '>', $hourAgo)->count() >= self::MAX_SETUPS_PER_HOUR) {
+            return self::result(false, false, 'Too many sign-in code setups right now. Try again in an hour.', 0);
         }
 
         $code = str_pad((string) random_int(0, (int) str_repeat('9', self::LENGTH)), self::LENGTH, '0', STR_PAD_LEFT);

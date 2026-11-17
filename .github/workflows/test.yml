@@ -1,0 +1,26 @@
+# php -l and the unit tests on every PHP version WHMCS 8.10 to 9.1 supports, plus PHP 8.5 (tools/check.sh,
+# with Docker images of PHP and the fake SMSTunnel API). The end-to-end test needs the SMSTunnel server
+# build and runs on the maintainers' machine only (tests/e2e/run.mjs).
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["72", "73", "74", "81", "82", "83", "84", "85"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lint and unit tests (PHP ${{ matrix.php }})
+        run: bash tools/check.sh ${{ matrix.php }}

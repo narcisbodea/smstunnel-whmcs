@@ -67,6 +67,10 @@ final class Schema
                 $table->dateTime('next_attempt_at')->nullable();
                 $table->string('endpoint', 16)->default('send');
                 $table->string('idempotency_key', 64)->nullable();
+                // Which API key and server the key belongs to (SMSTunnel scopes Idempotency-Keys per API key),
+                // and whether an attempt may have reached SMSTunnel (then only that key and server may retry).
+                $table->string('scope', 16)->default('');
+                $table->unsignedTinyInteger('reached')->default(0);
                 $table->mediumText('request')->nullable();
                 $table->string('dedupe_key', 120)->nullable();
                 $table->unique('dedupe_key');

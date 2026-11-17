@@ -41,7 +41,13 @@ platform_for() {
 
 PORT_FILE="$ROOT/tests/fake-api/check-port.txt"
 rm -f "$PORT_FILE"
-node "$ROOT/tests/fake-api/server.mjs" --port 0 --port-file "$PORT_FILE" > "$ROOT/tests/fake-api/check.log" 2>&1 &
+# Docker Desktop (Windows, macOS) reaches the host's loopback through host.docker.internal; on Linux the
+# containers come from the bridge network, so the fake API listens on every interface there (CI).
+FAKE_HOST=127.0.0.1
+if [ "$(uname -s)" = "Linux" ]; then
+  FAKE_HOST=0.0.0.0
+fi
+node "$ROOT/tests/fake-api/server.mjs" --port 0 --host "$FAKE_HOST" --port-file "$PORT_FILE" > "$ROOT/tests/fake-api/check.log" 2>&1 &
 FAKE_PID=$!
 for _ in $(seq 1 50); do [ -s "$PORT_FILE" ] && break; sleep 0.1; done
 PORT="$(cat "$PORT_FILE")"

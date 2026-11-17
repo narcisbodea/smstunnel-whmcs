@@ -32,6 +32,9 @@ if (!defined('WHMCS')) {
  */
 class Notifier
 {
+    /** At most this many alerts of one kind to one staff number in an hour. */
+    const STAFF_ALERTS_PER_HOUR = 10;
+
     /** @var Settings */
     private $settings;
 
@@ -96,7 +99,7 @@ class Notifier
         $this->textClient($event, $invoice['clientId'], $values, 'invoice', $invoice['id'], $event . ':' . $invoice['id'] . ':' . ($kind !== '' ? $kind : 'reminder') . ':' . date('Ymd', $this->platform->now()));
     }
 
-    /** InvoicePaid: the invoice was paid (gateway, credit or staff). */
+    /** InvoicePaid: the invoice was paid (online, with credit, or by staff). */
     public function invoicePaid(array $vars)
     {
         if (!$this->wants('invoice_paid')) {
@@ -362,6 +365,11 @@ class Notifier
             $text->to = $number;
             $text->message = $message;
             $text->dedupeKey = $dedupe . ':' . substr(sha1($number), 0, 10);
+            // A flood of tickets (spam to the support address, say) must not flood your phones or use up the plan.
+            if ($this->outbox->sentRecently($event, $number, 3600) >= self::STAFF_ALERTS_PER_HOUR) {
+                $this->outbox->skip($text, sprintf('more than %d alerts of this kind in an hour to this number', self::STAFF_ALERTS_PER_HOUR));
+                continue;
+            }
             $this->outbox->deliver($text);
         }
     }

@@ -173,6 +173,9 @@ test('texts and staff numbers are checked when saved', function () {
     eq($settings->customText('invoice_paid'), '', 'an empty text keeps the suggestion');
     $html = adminPage(array('tab' => 'texts'), array('smstunnel_action' => 'save_texts', 'token' => token(), 'text' => array('invoice_paid' => str_repeat('x', 1601))));
     has($html, 'longer than 1600 characters');
+    // WHMCS hands modules HTML-encoded request values: "Tom & Co" arrives as "Tom &amp; Co".
+    adminPage(array('tab' => 'texts'), array('smstunnel_action' => 'save_texts', 'token' => token(), 'on' => array('invoice_paid' => '1'), 'text' => array('invoice_paid' => 'Thanks from Tom &amp; Co &lt;3')));
+    eq(Module::settings()->eventText('invoice_paid'), 'Thanks from Tom & Co <3', 'saved as typed');
 
     $html = adminPage(array('tab' => 'staff'), array('smstunnel_action' => 'save_staff', 'token' => token(), 'staff_numbers' => "+14155550190\nnot-a-number"));
     has($html, 'not-a-number');

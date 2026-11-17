@@ -78,6 +78,23 @@ final class RetryPolicy
     }
 
     /**
+     * True when SMSTunnel may have taken the text despite the error: the answer was lost after the
+     * request left, or a server error came back (it may come after the text was created). A refused
+     * connection, a DNS error or a 429 (the rate limit answers before the text is looked at) never reach it.
+     */
+    public static function mayHaveArrived(\Throwable $error): bool
+    {
+        if ($error instanceof TransportException) {
+            return $error->mayHaveArrived();
+        }
+        if ($error instanceof ApiException) {
+            return $error->getStatus() >= 500 || $error->getStatus() === 409;
+        }
+
+        return true;
+    }
+
+    /**
      * When to try next, or null to give up.
      *
      * @param int      $attempts     attempts made so far (1 after the first)

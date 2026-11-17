@@ -261,6 +261,36 @@ test('a failing WHMCS call, a PHP warning or a database error never escapes a ho
     ok(true, 'odd hook parameters are ignored');
 });
 
+test("a deprecation inside WHMCS's own code does not cancel the module's work", function () {
+    setupClients();
+    Harness::invoice(1100, 1);
+    Harness::$deprecationIn = 'GetClientsDetails';
+    Harness::fire('InvoiceCreated', array('invoiceid' => 1100));
+    Harness::$deprecationIn = '';
+    eq(count(Harness::sends()), 1, 'the text went out');
+    eq($GLOBALS['smstunnel_test_notices'], array('Optional parameter declared before required parameter'), "WHMCS's handler got its deprecation");
+    ok(\SmsTunnel\Whmcs\Guard::isOwn(SMSTUNNEL_REPO . '/modules/addons/smstunnel/lib/Notifier.php'), 'the addon is the module\'s own code');
+    ok(\SmsTunnel\Whmcs\Guard::isOwn(SMSTUNNEL_REPO . '/modules/security/smstunnel2fa/smstunnel2fa.php'), 'so is the sign-in code module');
+    ok(!\SmsTunnel\Whmcs\Guard::isOwn(SMSTUNNEL_REPO . '/tests/harness/bootstrap.php'), 'WHMCS (here its stand-in) is not');
+});
+
+test('staff alerts: at most 10 of a kind an hour to each number (a ticket flood cannot flood the phones)', function () {
+    setupClients();
+    Module::settings()->set(Settings::STAFF_NUMBERS, array('+14155550190'));
+    for ($i = 1; $i <= 12; ++$i) {
+        Harness::ticket(1200 + $i, 0, array('tid' => 'SPAM-' . $i, 'subject' => 'Buy now'));
+        Harness::fire('TicketOpen', array('ticketid' => 1200 + $i, 'ticketmask' => 'SPAM-' . $i, 'userid' => 0, 'subject' => 'Buy now', 'priority' => 'Low'));
+    }
+    eq(count(Harness::sends()), 10, 'ten alerts');
+    $rows = Harness::logRows();
+    eq(array($rows[10]['status'], $rows[11]['status']), array(TextLog::SKIPPED, TextLog::SKIPPED));
+    has((string) $rows[11]['error'], 'more than 10 alerts of this kind in an hour');
+    Harness::$now += 3601;
+    Harness::ticket(1300, 1);
+    Harness::fire('TicketOpen', array('ticketid' => 1300, 'userid' => 1, 'subject' => 'Real question'));
+    eq(count(Harness::sends()), 11, 'an hour later alerts go out again');
+});
+
 test('hooks.php registers every hook point the module documents', function () {
     Harness::loadHooks();
     $hooks = array_keys($GLOBALS['smstunnel_test_hooks']);

@@ -93,37 +93,49 @@ final class Screens
      */
     public static function activateVerify(array $params): array
     {
-        $post = self::post($params);
-        $userKey = SignInCodes::userKey(isset($params['user_info']) ? $params['user_info'] : null);
-        if ($userKey === '') {
-            self::fail('Your account could not be identified. Reload the page and try again.');
-        }
-        list($phone, $problem) = PhoneNumber::analyse(isset($post['smstunnel_phone']) ? (string) $post['smstunnel_phone'] : '', '');
-        if ($problem !== PhoneNumber::OK) {
-            self::fail('Type your mobile number in international format: + and your country code, for example +14155550123.');
-        }
-        $typed = isset($post['smstunnel_code']) ? (string) preg_replace('/\D+/', '', (string) $post['smstunnel_code']) : '';
-        $codes = Module::signInCodes();
-
         try {
-            if ($typed !== '' && self::pendingSetupPhone() === $phone) {
-                if (!$codes->verify($userKey, $phone, SignInCodes::SETUP, $typed)) {
-                    self::fail('That code is not right, or it has expired. Check the text message and try again, or clear the code box for a new code.');
-                }
-                self::setPendingSetupPhone('');
-                self::savePhone($userKey, $phone);
-                Module::platform()->logActivity('sign-in codes by text message turned on for ' . Redact::number($phone));
-
-                return array('settings' => array('phone' => $phone), 'msg' => 'Sign-in codes will be texted to ' . Redact::number($phone) . '.');
-            }
-
-            $sent = $codes->issue($userKey, $phone, SignInCodes::SETUP, self::pendingSetupPhone() === $phone);
-        } catch (\Exception $e) {
+            return Guard::run(function () use ($params) {
+                return Screens::checkSetup($params);
+            });
+        } catch (\Throwable $e) {
             if (self::isNotice($e)) {
                 throw $e;
             }
             self::fail('Sign-in codes are not available right now: ' . Hooks::describe($e));
         }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     *
+     * @return array{settings: array{phone: string}, msg: string}
+     */
+    public static function checkSetup(array $params): array
+    {
+        $post = self::post($params);
+        $userKey = SignInCodes::userKey(isset($params['user_info']) ? $params['user_info'] : null);
+        if ($userKey === '') {
+            self::fail('Your account could not be identified. Reload the page and try again.');
+        }
+        list($phone, $problem) = PhoneNumber::analyse(isset($post['smstunnel_phone']) && is_scalar($post['smstunnel_phone']) ? (string) $post['smstunnel_phone'] : '', '');
+        if ($problem !== PhoneNumber::OK) {
+            self::fail('Type your mobile number in international format: + and your country code, for example +14155550123.');
+        }
+        $typed = isset($post['smstunnel_code']) && is_scalar($post['smstunnel_code']) ? (string) preg_replace('/\D+/', '', (string) $post['smstunnel_code']) : '';
+        $codes = Module::signInCodes();
+
+        if ($typed !== '' && self::pendingSetupPhone() === $phone) {
+            if (!$codes->verify($userKey, $phone, SignInCodes::SETUP, $typed)) {
+                self::fail('That code is not right, or it has expired. Check the text message and try again, or clear the code box for a new code.');
+            }
+            self::setPendingSetupPhone('');
+            self::savePhone($userKey, $phone);
+            Module::platform()->logActivity('sign-in codes by text message turned on for ' . Redact::number($phone));
+
+            return array('settings' => array('phone' => $phone), 'msg' => 'Sign-in codes will be texted to ' . Redact::number($phone) . '.');
+        }
+
+        $sent = $codes->issue($userKey, $phone, SignInCodes::SETUP, self::pendingSetupPhone() === $phone);
         if (!$sent['ok']) {
             self::fail($sent['error']);
         }
@@ -161,7 +173,13 @@ final class Screens
         if ($phone === '') {
             return self::box('warning', 'No mobile number is saved for your sign-in codes. Use your backup code.') . self::codeBox();
         }
-        $again = isset($_GET['smstunnel_resend']) && $_GET['smstunnel_resend'] === '1';
+        // "Text me a new code" is a link with a one-time token of this session: an old link, a page that
+        // keeps it in its address, or another site cannot ask for codes.
+        $token = self::resendToken(false);
+        $again = isset($_GET['smstunnel_resend']) && is_string($_GET['smstunnel_resend']) && hash_equals($token, $_GET['smstunnel_resend']);
+        if ($again) {
+            $token = self::resendToken(true);
+        }
         $sent = Module::signInCodes()->issue($userKey, $phone, SignInCodes::LOGIN, $again);
 
         $html = '';
@@ -172,7 +190,7 @@ final class Screens
                 . ($sent['error'] !== '' ? ' ' . $sent['error'] : ''));
         }
         $html .= self::codeBox();
-        $html .= '<p class="small text-muted" style="margin-top:10px">No text after a minute? <a href="' . self::e(self::resendLink()) . '">Text me a new code</a>, or use your backup code.</p>';
+        $html .= '<p class="small text-muted" style="margin-top:10px">No text after a minute? <a href="' . self::e(self::resendLink($token)) . '">Text me a new code</a>, or use your backup code.</p>';
 
         return $html;
     }
@@ -246,14 +264,31 @@ final class Screens
             . '<input type="submit" class="btn btn-primary btn-block btn-lg" value="Sign in">';
     }
 
-    /** The current page with smstunnel_resend=1, to text a new code. */
-    private static function resendLink(): string
+    /** The current page with smstunnel_resend=<token>, to text a new code. */
+    private static function resendLink(string $token): string
     {
         $uri = isset($_SERVER['REQUEST_URI']) && is_string($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
         $uri = (string) preg_replace('/([?&])smstunnel_resend=[^&]*(&|$)/', '$1', $uri);
         $uri = rtrim($uri, '?&');
 
-        return $uri . (strpos($uri, '?') !== false ? '&' : '?') . 'smstunnel_resend=1';
+        return $uri . (strpos($uri, '?') !== false ? '&' : '?') . 'smstunnel_resend=' . rawurlencode($token);
+    }
+
+    /**
+     * The session's token for "Text me a new code" ($new: replace it, after it was used).
+     */
+    public static function resendToken(bool $new): string
+    {
+        if (!isset($_SESSION[SignInCodes::SESSION]) || !is_array($_SESSION[SignInCodes::SESSION])) {
+            $_SESSION[SignInCodes::SESSION] = array();
+        }
+        $current = isset($_SESSION[SignInCodes::SESSION]['resend']) && is_string($_SESSION[SignInCodes::SESSION]['resend']) ? $_SESSION[SignInCodes::SESSION]['resend'] : '';
+        if ($new || strlen($current) < 16) {
+            $current = bin2hex(random_bytes(12));
+            $_SESSION[SignInCodes::SESSION]['resend'] = $current;
+        }
+
+        return $current;
     }
 
     /** The client's own number as a suggestion, when a client is setting this up. */
@@ -298,7 +333,7 @@ final class Screens
         throw new NoticeException($message);
     }
 
-    private static function isNotice(\Exception $e): bool
+    private static function isNotice(\Throwable $e): bool
     {
         return $e instanceof NoticeException || get_class($e) === 'WHMCS\\Exception';
     }

@@ -3,9 +3,10 @@
 .smstunnel-admin .smstunnel-steps { padding-left: 20px; margin-bottom: 15px; }
 .smstunnel-admin .smstunnel-counter { font-size: 12px; margin: 4px 0 6px; }
 .smstunnel-admin .smstunnel-counter.smstunnel-long { color: #a94442; }
-.smstunnel-admin .smstunnel-fields .btn { margin: 0 2px 4px 0; font-family: monospace; }
+.smstunnel-admin .smstunnel-fields .btn { margin: 0 2px 4px 0; }
+.smstunnel-admin .smstunnel-fields .btn-default { font-family: monospace; }
 .smstunnel-admin .smstunnel-advanced { margin: 0 0 15px; }
-.smstunnel-admin .smstunnel-advanced summary { cursor: pointer; font-weight: bold; }
+.smstunnel-admin .smstunnel-advanced summary { display: list-item; cursor: pointer; font-weight: bold; }
 .smstunnel-admin .smstunnel-log td { vertical-align: top; font-size: 12px; }
 .smstunnel-admin .smstunnel-log code { font-size: 11px; white-space: nowrap; }
 .smstunnel-admin textarea { font-family: inherit; }

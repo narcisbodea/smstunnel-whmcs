@@ -1,0 +1,31 @@
+{
+    "schema": "1.0",
+    "type": "whmcs-security",
+    "name": "smstunnel2fa",
+    "license": "MIT",
+    "category": "security",
+    "description": {
+        "name": "SMSTunnel: codes by text message",
+        "tagline": "Sign-in codes by text message, sent from your own Android phone with SMSTunnel.",
+        "long": "A Two-Factor Authentication module for staff and clients: each sign-in texts a 6-digit code to the mobile number the person confirmed when turning it on. Codes expire after 10 minutes, work once, allow 5 tries, and are stored only as keyed hashes. Needs the SMSTunnel for WHMCS addon.",
+        "features": [
+            "6-digit codes valid for 10 minutes, one use, 5 tries",
+            "The number is confirmed with a code before it is saved",
+            "Codes are never logged or stored in clear"
+        ]
+    },
+    "logo": {
+        "filename": "logo.png"
+    },
+    "support": {
+        "homepage": "https:\/\/smstunnel.io\/",
+        "learn_more": "https:\/\/smstunnel.io\/docs\/",
+        "docs_url": "https:\/\/github.com\/narcisbodea\/smstunnel-whmcs#readme"
+    },
+    "authors": [
+        {
+            "name": "SMSTunnel (NARBOWEB SRL)",
+            "homepage": "https:\/\/smstunnel.io\/"
+        }
+    ]
+}

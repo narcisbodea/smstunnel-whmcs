@@ -41,7 +41,8 @@ final class Template
         foreach ($values as $name => $value) {
             $clean[strtolower((string) $name)] = self::value($value, in_array($name, self::NEVER_SHORTENED, true) ? 0 : self::MAX_FIELD_LENGTH);
         }
-        $text = str_replace(array("\r\n", "\r"), "\n", $template);
+        // A text saved HTML-encoded (WHMCS encodes request values) reads as typed.
+        $text = html_entity_decode(str_replace(array("\r\n", "\r"), "\n", $template), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = (string) preg_replace_callback('/\{\$?([A-Za-z][A-Za-z0-9_]*)\}/', function ($match) use ($clean) {
             $name = strtolower($match[1]);
 
@@ -97,7 +98,12 @@ final class Template
         if (is_bool($value) || !is_scalar($value)) {
             return '';
         }
-        $text = html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = (string) $value;
+        if (preg_match('//u', $text) !== 1) {
+            // Not UTF-8: an old database's Latin-1 ("Andr\xE9" is André).
+            $text = function_exists('mb_convert_encoding') ? (string) mb_convert_encoding($text, 'UTF-8', 'ISO-8859-1') : (string) preg_replace('/[\x80-\xFF]/', '?', $text);
+        }
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         // Tags only: "I <3 hosting" or "a < b" keep their words (strip_tags() would drop them).
         $text = (string) preg_replace('~<(script|style)\b.*?</\1\s*>~is', ' ', $text);
         $text = (string) preg_replace('~</?[A-Za-z][A-Za-z0-9]*(\s[^<>]*)?/?>~', ' ', $text);

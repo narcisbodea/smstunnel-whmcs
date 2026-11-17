@@ -37,6 +37,7 @@ class Consent
 
     const OPTED_OUT = 'opted out (No text messages)';
     const NOT_OPTED_IN = 'not opted in (Send me text messages)';
+    const FIELD_MISSING = 'the client field "No text messages" is missing: create it again under Addons → SMSTunnel for WHMCS';
 
     /** @var Settings */
     private $settings;
@@ -75,8 +76,13 @@ class Consent
             return $field > 0 && $this->ticked($field, $clientId) ? array(true, '') : array(false, self::NOT_OPTED_IN);
         }
         $field = $this->fieldId(Settings::FIELD_OPT_OUT);
+        if ($field <= 0) {
+            // Without the field nobody can say no (and WHMCS deleted the answers with it): no texts until
+            // it is back (the module's page offers to create it again).
+            return array(false, self::FIELD_MISSING);
+        }
 
-        return $field > 0 && $this->ticked($field, $clientId) ? array(false, self::OPTED_OUT) : array(true, '');
+        return $this->ticked($field, $clientId) ? array(false, self::OPTED_OUT) : array(true, '');
     }
 
     /** True when the client ticked the field. */

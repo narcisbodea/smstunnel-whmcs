@@ -1,0 +1,34 @@
+{
+    "schema": "1.0",
+    "type": "whmcs-addons",
+    "name": "smstunnel",
+    "license": "MIT",
+    "category": "addon",
+    "description": {
+        "name": "SMSTunnel for WHMCS",
+        "tagline": "Text your clients and staff about WHMCS events from your own Android phone and number.",
+        "long": "Texts your clients when an invoice is ready, a payment is due or overdue, a payment arrives, a service is activated, suspended or unsuspended, staff reply to a ticket, or a domain is registered or renewed, and alerts your staff about paid orders and tickets. The texts go out from your own Android phone with the SMSTunnel app, from your own number, so clients can reply. Clients can opt out with a tickbox in their profile, or you can text only clients who opted in.",
+        "features": [
+            "Ten client texts and three staff alerts, each with its own switch and wording",
+            "Merge fields and an SMS part counter in the editor",
+            "Clients choose: a No text messages tickbox, or opt-in only",
+            "One recipient per text, retried safely after network errors with an Idempotency-Key",
+            "A log of every text, kept 90 days by default",
+            "Optional sign-in codes by text message (Two-Factor Authentication module)"
+        ]
+    },
+    "logo": {
+        "filename": "logo.png"
+    },
+    "support": {
+        "homepage": "https:\/\/smstunnel.io\/",
+        "learn_more": "https:\/\/smstunnel.io\/docs\/",
+        "docs_url": "https:\/\/github.com\/narcisbodea\/smstunnel-whmcs#readme"
+    },
+    "authors": [
+        {
+            "name": "SMSTunnel (NARBOWEB SRL)",
+            "homepage": "https:\/\/smstunnel.io\/"
+        }
+    ]
+}

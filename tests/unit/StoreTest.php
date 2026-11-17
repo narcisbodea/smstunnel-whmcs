@@ -118,14 +118,14 @@ test('a deleted field is reported and can be created again', function () {
     $id = (int) Module::settings()->get(Settings::FIELD_OPT_OUT);
     Capsule::table('tblcustomfields')->where('id', $id)->delete();
     eq(Module::consent()->activeField()['id'], 0, 'missing');
-    eq(Module::consent()->check(5), array(true, ''), 'without the field nobody counts as opted out');
+    eq(Module::consent()->check(5), array(false, Consent::FIELD_MISSING), 'without the field nobody could say no: no texts until it is back');
     Module::consent()->sync();
     ok(Module::consent()->activeField()['id'] > 0, 'created again');
 });
 
 group('log and deactivation');
 
-test('the daily cron removes rows older than the days set, but not texts waiting for a retry', function () {
+test('the daily cron removes rows older than the days set (a day after it was written a text is past its retries)', function () {
     Harness::activate(Harness::testKey());
     $log = Module::log();
     $day = 86400;
@@ -135,14 +135,16 @@ test('the daily cron removes rows older than the days set, but not texts waiting
         Harness::$now += $daysAgo * $day;
     }
     Harness::$now -= 95 * $day;
-    $waiting = $log->create(array('event' => 'invoice_paid', 'audience' => 'client', 'status' => TextLog::SENDING, 'recipient' => '+14155550102'));
-    $log->retryAt($waiting, Harness::$now + 300, 'network');
+    $stuck = $log->create(array('event' => 'invoice_paid', 'audience' => 'client', 'status' => TextLog::SENDING, 'recipient' => '+14155550102', 'request' => '{"to":"+14155550102"}'));
+    $log->retryAt($stuck, Harness::$now + 300, 'network');
     Harness::$now += 95 * $day;
+    $recent = $log->create(array('event' => 'invoice_paid', 'audience' => 'client', 'status' => TextLog::SENDING, 'recipient' => '+14155550103'));
+    $log->retryAt($recent, Harness::$now + 300, 'network');
     Harness::fire('DailyCronJob');
-    eq(count(Harness::logRows()), 3, 'the two rows older than 90 days went, the retry stayed');
+    eq(count(Harness::logRows()), 3, 'the rows older than 90 days went, a stuck retry with its number and words too');
     Module::settings()->set(Settings::LOG_DAYS, 2);
     Harness::fire('DailyCronJob');
-    eq(count(Harness::logRows()), 2, 'with 2 days, only the newest and the retry stay');
+    eq(array_column(Harness::logRows(), 'recipient'), array('+14155550101', '+14155550103'), 'with 2 days: the newest row and the text waiting since a moment ago');
 });
 
 test('deactivation keeps everything unless "Delete all data on deactivate" is ticked', function () {

@@ -28,6 +28,16 @@ function lastCode(): string
     return isset($match[1]) ? $match[1] : '';
 }
 
+/** Follows the "Text me a new code" link of the current session. */
+function askNewCode(array $params): string
+{
+    $_GET['smstunnel_resend'] = Screens::resendToken(false);
+    $html = smstunnel2fa_challenge($params);
+    unset($_GET['smstunnel_resend']);
+
+    return $html;
+}
+
 function userParams(array $settings = array()): array
 {
     return array(
@@ -108,7 +118,7 @@ test('sign-in: one code per 10 minutes, checked in constant time, 5 tries, one u
     $html = smstunnel2fa_challenge($params);
     has($html, 'name="key"');
     has($html, 'We texted a sign-in code to +•••••••0177');
-    has($html, 'smstunnel_resend=1');
+    has($html, 'smstunnel_resend=' . Screens::resendToken(false), 'the resend link carries the session token');
     $code = lastCode();
     smstunnel2fa_challenge($params);
     eq(count(Harness::sends('/api/v1/sms/send-2fa')), 1, 'showing the page again sends no new code');
@@ -127,9 +137,7 @@ test('sign-in: one code per 10 minutes, checked in constant time, 5 tries, one u
 
     // A new code: the old ones stop working; 5 wrong tries end it.
     Harness::$now += 61;
-    $_GET['smstunnel_resend'] = '1';
-    smstunnel2fa_challenge($params);
-    unset($_GET['smstunnel_resend']);
+    askNewCode($params);
     $code2 = lastCode();
     eq(count(Harness::sends('/api/v1/sms/send-2fa')), 2, 'a new code on request');
     for ($i = 0; $i < 5; ++$i) {
@@ -139,9 +147,7 @@ test('sign-in: one code per 10 minutes, checked in constant time, 5 tries, one u
 
     // Expiry.
     Harness::$now += 61;
-    $_GET['smstunnel_resend'] = '1';
-    smstunnel2fa_challenge($params);
-    unset($_GET['smstunnel_resend']);
+    askNewCode($params);
     $code3 = lastCode();
     Harness::$now += 601;
     eq($try($code3), false, 'expired after 10 minutes');
@@ -161,16 +167,68 @@ test('limits: 60 seconds between codes, 5 codes in 30 minutes', function () {
     twoFactorModule();
     $params = userParams(array('phone' => '+14155550177'));
     smstunnel2fa_challenge($params);
-    $_GET['smstunnel_resend'] = '1';
-    $html = smstunnel2fa_challenge($params);
+    $html = askNewCode($params);
     has($html, 'less than a minute ago', 'too soon');
     for ($i = 0; $i < 6; ++$i) {
         Harness::$now += 61;
-        $html = smstunnel2fa_challenge($params);
+        $html = askNewCode($params);
     }
-    unset($_GET['smstunnel_resend']);
     eq(count(Harness::sends('/api/v1/sms/send-2fa')), 5, 'at most 5 codes in 30 minutes');
     has($html, 'Too many codes');
+});
+
+test('"Text me a new code" works once per link: an old link or a stranger\'s token sends nothing', function () {
+    Harness::activate(Harness::testKey());
+    twoFactorModule();
+    $params = userParams(array('phone' => '+14155550177'));
+    smstunnel2fa_challenge($params);
+    Harness::$now += 61;
+    $used = Screens::resendToken(false);
+    askNewCode($params);
+    eq(count(Harness::sends('/api/v1/sms/send-2fa')), 2, 'the link worked');
+    Harness::$now += 61;
+    $_GET['smstunnel_resend'] = $used;
+    smstunnel2fa_challenge($params);
+    $_GET['smstunnel_resend'] = '1';
+    smstunnel2fa_challenge($params);
+    unset($_GET['smstunnel_resend']);
+    eq(count(Harness::sends('/api/v1/sms/send-2fa')), 2, 'the same link again, or a made-up token: no new code');
+});
+
+test('abuse limits: one number gets at most 5 codes an hour, all setups together 20 an hour', function () {
+    Harness::activate(Harness::testKey());
+    twoFactorModule();
+    // Five different "users" (sign-ups) ask for setup codes to the same stranger's number.
+    for ($user = 1; $user <= 6; ++$user) {
+        $params = userParams();
+        $params['user_info'] = array('id' => 100 + $user, 'email' => 'user' . $user . '@example.com');
+        $params['post_vars'] = array('smstunnel_phone' => '+14155550166', 'smstunnel_code' => '');
+        $_SESSION = array('adminid' => 1);
+        try {
+            smstunnel2fa_activateverify($params);
+        } catch (\WHMCS\Exception $e) {
+            $last = $e->getMessage();
+        }
+    }
+    eq(count(Harness::sends('/api/v1/sms/send-2fa')), 5, 'five codes to that number, then no more this hour');
+    has($last, 'Too many codes were sent to this number');
+    // Twenty setups an hour for the whole WHMCS, whatever the numbers.
+    for ($user = 1; $user <= 20; ++$user) {
+        $params = userParams();
+        $params['user_info'] = array('id' => 200 + $user, 'email' => 'other' . $user . '@example.com');
+        $params['post_vars'] = array('smstunnel_phone' => '+1415555' . (1000 + $user), 'smstunnel_code' => '');
+        $_SESSION = array('adminid' => 1);
+        try {
+            smstunnel2fa_activateverify($params);
+        } catch (\WHMCS\Exception $e) {
+            $last = $e->getMessage();
+        }
+    }
+    eq(count(Harness::sends('/api/v1/sms/send-2fa')), 20, 'twenty setup codes in all, then no more this hour');
+    has($last, 'Too many sign-in code setups right now');
+    $_SESSION = array('adminid' => 1);
+    $html = smstunnel2fa_challenge(userParams(array('phone' => '+14155550177')));
+    has($html, 'We texted a sign-in code', 'signing in with a confirmed number still works');
 });
 
 test('no code is stored, logged or shown anywhere but in the text', function () {

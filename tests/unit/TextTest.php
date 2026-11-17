@@ -16,6 +16,7 @@ test('merge fields are filled and tidied', function () {
     $values = array('client_first_name' => 'Ana', 'invoice_num' => '1042', 'company_name' => 'Ana &amp; Co', 'service_domain' => '');
     eq(Template::render('Hi {client_first_name}, invoice #{invoice_num}. {company_name}', $values), 'Hi Ana, invoice #1042. Ana & Co');
     eq(Template::render('Hi {$client_first_name}!', $values), 'Hi Ana!', 'the {$field} form of WHMCS emails works too');
+    eq(Template::render('Tom &amp; Co: {client_first_name}', $values), 'Tom & Co: Ana', 'a text saved HTML-encoded reads as typed');
     eq(Template::render('Your {service_domain} is active.', $values), 'Your is active.', 'an empty field leaves no double space');
     eq(Template::render('Hi {missing_field}, {client_first_name}', $values), 'Hi {missing_field}, Ana', 'an unknown field stays as typed');
     eq(Template::render("Line one\r\n\r\n\r\n\r\nLine   two\t\tend", $values), "Line one\n\nLine two end");

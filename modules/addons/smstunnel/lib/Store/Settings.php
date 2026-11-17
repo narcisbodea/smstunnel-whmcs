@@ -270,7 +270,7 @@ class Settings
      */
     public function setEvent(string $event, bool $on, string $text)
     {
-        $text = trim(str_replace(array("\r\n", "\r"), "\n", $text));
+        $text = trim(str_replace(array("\r\n", "\r"), "\n", \SmsTunnel\Whmcs\Send\OutgoingText::utf8($text)));
         if ($text === Events::defaultText($event)) {
             $text = '';
         }

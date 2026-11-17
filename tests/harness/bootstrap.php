@@ -26,13 +26,23 @@ namespace {
     define('ROOTDIR', SMSTUNNEL_REPO);
 
     // Warnings in the module's own code (or the tests) are failures; deprecations from the vendor's
-    // Laravel on a newer PHP are not the module's concern.
+    // Laravel on a newer PHP are not the module's concern. A deprecation from the WHMCS stand-in itself
+    // is noted and goes on, the way WHMCS logs its own deprecations.
+    $GLOBALS['smstunnel_test_notices'] = array();
     set_error_handler(function ($severity, $message, $file = '', $line = 0) {
         if (!(error_reporting() & $severity)) {
             return false;
         }
-        if (strpos(str_replace('\\', '/', (string) $file), '/vendor') !== false && in_array($severity, array(E_DEPRECATED, E_USER_DEPRECATED), true)) {
-            return true;
+        $file = str_replace('\\', '/', (string) $file);
+        if (in_array($severity, array(E_DEPRECATED, E_USER_DEPRECATED), true)) {
+            if (strpos($file, '/vendor') !== false) {
+                return true;
+            }
+            if (substr($file, -strlen('/tests/harness/bootstrap.php')) === '/tests/harness/bootstrap.php') {
+                $GLOBALS['smstunnel_test_notices'][] = $message;
+
+                return true;
+            }
         }
         throw new \ErrorException($message, 0, $severity, $file, $line);
     });
@@ -189,6 +199,9 @@ namespace {
         /** @var callable|null makes localAPI throw, for tests */
         public static $apiFailure;
 
+        /** @var string a localAPI command that raises a deprecation inside "WHMCS" */
+        public static $deprecationIn = '';
+
         /** @var int the clock (Unix time) the module sees */
         public static $now = 0;
 
@@ -227,6 +240,8 @@ namespace {
             self::$activity = array();
             self::$apiCalls = array();
             self::$apiFailure = null;
+            self::$deprecationIn = '';
+            $GLOBALS['smstunnel_test_notices'] = array();
             self::$requests = array();
             self::$responses = array();
             self::$now = 1795000000; // 2026-11-18 (a fixed day keeps the tests' dates stable)
@@ -466,6 +481,10 @@ namespace {
         public static function api(string $command, array $values): array
         {
             self::$apiCalls[] = array($command, $values);
+            if (self::$deprecationIn === $command) {
+                // As WHMCS's own code can on a newer PHP: a deprecation raised inside WHMCS.
+                trigger_error('Optional parameter declared before required parameter', E_USER_DEPRECATED);
+            }
             if (self::$apiFailure !== null) {
                 $failure = self::$apiFailure;
                 $failure($command, $values);

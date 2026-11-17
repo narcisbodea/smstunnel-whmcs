@@ -67,7 +67,8 @@ final class OutgoingText
      */
     public function body(string $deviceId): array
     {
-        $body = array('to' => $this->to, 'message' => $this->message);
+        // Valid UTF-8, so the request stored for a retry and the one sent are the same text.
+        $body = array('to' => self::utf8($this->to), 'message' => self::utf8($this->message));
         if (trim($deviceId) !== '') {
             $body['deviceId'] = trim($deviceId);
         }
@@ -76,5 +77,18 @@ final class OutgoingText
         }
 
         return $body;
+    }
+
+    /** The text with any byte that is not valid UTF-8 replaced (old databases may hold Latin-1). */
+    public static function utf8(string $text): string
+    {
+        if (preg_match('//u', $text) === 1) {
+            return $text;
+        }
+        if (function_exists('mb_convert_encoding')) {
+            return (string) mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+        }
+
+        return (string) preg_replace('/[^\x09\x0A\x0D\x20-\x7E]/', '?', $text);
     }
 }
