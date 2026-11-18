@@ -37,7 +37,7 @@ Free (MIT license).
 
 **Download URL**
 
-`https://github.com/narcisbodea/smstunnel-whmcs/releases/download/v1.0.0/smstunnel-whmcs-1.0.0.zip` (exists once the repository and its v1.0.0 release are published; see the steps below).
+`https://github.com/narcisbodea/smstunnel-whmcs/releases/download/v1.0.1/smstunnel-whmcs-1.0.1.zip` (published on 18 Nov 2026).
 
 **Description** (Markdown, no links)
 

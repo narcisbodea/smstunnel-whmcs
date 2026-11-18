@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-11-18)
+
+- The log names each event once: a ticket, order, service or domain now links the event's own name (1.0.0 read "Staff reply on a ticket ticket" and "New paid order order"). An invoice still shows its number after the name.
+
 ## 1.0.0 (2026-11-18)
 
 First release.

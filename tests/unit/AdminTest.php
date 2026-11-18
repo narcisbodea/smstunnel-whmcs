@@ -131,6 +131,33 @@ test('everything shown is escaped: phone names, errors, texts, company name', fu
     lacks($log, '"><script>', 'filters are checked, not echoed');
 });
 
+test('the log names each event once, linked to what it was about', function () {
+    Harness::activate(Harness::testKey());
+    Harness::usClient(1, '4155550101');
+    $rows = array(
+        array('invoice_paid', 'client', 'invoice', 1041),
+        array('ticket_reply', 'client', 'ticket', 77),
+        array('staff_order_paid', 'staff', 'order', 512),
+        array('service_activated', 'client', 'service', 9),
+        array('domain_registered', 'client', 'domain', 4),
+        array('invoice_created', 'client', 'invoice', 0),
+    );
+    foreach ($rows as $row) {
+        Module::log()->create(array('event' => $row[0], 'audience' => $row[1], 'client_id' => 1, 'related_type' => $row[2], 'related_id' => $row[3], 'recipient' => '+14155550101', 'status' => TextLog::SENT, 'message_id' => ''));
+    }
+    $log = adminPage(array('tab' => 'log'));
+    has($log, 'Invoice paid <a href="invoices.php?action=edit&amp;id=1041">#1041</a>', 'an invoice: the name, then its number');
+    has($log, '<a href="supporttickets.php?action=view&amp;id=77">Staff reply on a ticket</a>', 'a ticket: the name is the link');
+    has($log, '<a href="orders.php?action=view&amp;id=512">New paid order</a>', 'an order: the name is the link');
+    has($log, '<a href="clientsservices.php?userid=1&amp;id=9">Service activated</a>');
+    has($log, '<a href="clientsdomains.php?userid=1&amp;id=4">Domain registered</a>');
+    foreach (array('>ticket</a>', '>order</a>', '>service</a>', '>domain</a>') as $word) {
+        lacks($log, $word, 'no word said twice: ' . $word);
+    }
+    has($log, '<td>Invoice created</td>', 'nothing to link: the name alone');
+    lacks($log, '<code></code>', 'no empty box where a text has no message ID');
+});
+
 test('the test text: sent now with a key, the result shown, errors explained', function () {
     Harness::activate(Harness::testKey());
     Harness::respond(Harness::sent('msg-test-1'));

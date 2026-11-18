@@ -32,7 +32,7 @@ The module has no way to text many or all clients at once: it only answers WHMCS
 
 ## Install
 
-1. Download `smstunnel-whmcs-1.0.0.zip` from the [latest release](https://github.com/narcisbodea/smstunnel-whmcs/releases/latest) and unzip it.
+1. Download the `smstunnel-whmcs-<version>.zip` of the [latest release](https://github.com/narcisbodea/smstunnel-whmcs/releases/latest) and unzip it.
 2. Upload the `modules` folder to your WHMCS root folder (it adds `modules/addons/smstunnel` and `modules/security/smstunnel2fa`; nothing of WHMCS is changed).
 3. In your WHMCS admin, open **System Settings → Addon Modules** (the wrench icon → **System Settings** in WHMCS 8), find **SMSTunnel for WHMCS** and click **Activate**.
 4. Click **Configure**, tick the admin roles that may use it under **Access Control**, and **Save Changes**.

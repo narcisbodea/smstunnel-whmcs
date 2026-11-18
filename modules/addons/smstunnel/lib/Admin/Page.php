@@ -536,7 +536,7 @@ final class Page
                 : '<span class="text-muted">' . Html::e($row['audience'] === Events::STAFF ? 'staff' : '-') . '</span>';
             $html .= '<tr>'
                 . '<td style="white-space:nowrap">' . Html::e((string) $row['created_at']) . '</td>'
-                . '<td>' . Html::e(Events::label((string) $row['event'])) . $this->relatedLink($row) . '</td>'
+                . '<td>' . $this->eventCell($row) . '</td>'
                 . '<td>' . $client . '</td>'
                 . '<td style="white-space:nowrap">' . Html::e((string) $row['recipient']) . '</td>'
                 . '<td>' . $this->statusBadge($row) . '</td>'
@@ -598,29 +598,40 @@ final class Page
     }
 
     /**
+     * The log's Event cell: the event's name, linked to what it was about. An invoice shows its number after
+     * the name (Invoice paid #1041); a ticket, order, service or domain links the name itself, so no word is
+     * said twice (it read "Staff reply on a ticket ticket" in 1.0.0).
+     *
      * @param array<string, mixed> $row
      */
-    private function relatedLink(array $row): string
+    private function eventCell(array $row): string
     {
+        $label = Html::e(Events::label((string) $row['event']));
         $id = (int) $row['related_id'];
         $client = (int) $row['client_id'];
         if ($id <= 0) {
-            return '';
+            return $label;
         }
         switch ((string) $row['related_type']) {
             case 'invoice':
-                return ' <a href="invoices.php?action=edit&amp;id=' . $id . '">#' . $id . '</a>';
+                return $label . ' <a href="invoices.php?action=edit&amp;id=' . $id . '">#' . $id . '</a>';
             case 'ticket':
-                return ' <a href="supporttickets.php?action=view&amp;id=' . $id . '">ticket</a>';
+                $href = 'supporttickets.php?action=view&amp;id=' . $id;
+                break;
             case 'service':
-                return ' <a href="clientsservices.php?userid=' . $client . '&amp;id=' . $id . '">service</a>';
+                $href = 'clientsservices.php?userid=' . $client . '&amp;id=' . $id;
+                break;
             case 'domain':
-                return ' <a href="clientsdomains.php?userid=' . $client . '&amp;id=' . $id . '">domain</a>';
+                $href = 'clientsdomains.php?userid=' . $client . '&amp;id=' . $id;
+                break;
             case 'order':
-                return ' <a href="orders.php?action=view&amp;id=' . $id . '">order</a>';
+                $href = 'orders.php?action=view&amp;id=' . $id;
+                break;
             default:
-                return '';
+                return $label;
         }
+
+        return '<a href="' . $href . '">' . $label . '</a>';
     }
 
     /**
