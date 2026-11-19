@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 (2026-11-19)
+
+- A Brazilian number from area code 55 (Rio Grande do Sul) typed without `+55`, such as `(55) 99123-4567`, was read as if it began with the calling code, which gave a wrong number (`+55991234567`). It now gets the calling code: `+5555991234567`.
+
 ## 1.0.1 (2026-11-18)
 
 - The log names each event once: a ticket, order, service or domain now links the event's own name (1.0.0 read "Staff reply on a ticket ticket" and "New paid order order"). An invoice still shows its number after the name.

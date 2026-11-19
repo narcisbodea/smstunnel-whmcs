@@ -16,7 +16,7 @@ if (!defined('WHMCS')) {
 final class Version
 {
     /** The module's version (also in CHANGELOG.md, whmcs.json and the release zip's name). */
-    const NUMBER = '1.0.1';
+    const NUMBER = '1.0.2';
 
     /** The addon's system name: the folder modules/addons/smstunnel and the prefix of its functions. */
     const MODULE = 'smstunnel';
